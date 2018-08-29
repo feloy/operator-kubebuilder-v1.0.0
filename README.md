@@ -346,6 +346,8 @@ ok  	operator/pkg/apis/cluster/v1
 
 ## Generating the clienset for the CRD
 
+Remove the `-zz_generated.*` entry from `.gitignore` so the generated deepcopy file is added to the repository.
+
 Install code-generator and select the branch for Kubernetes 1.10:
 ```
 $ go get k8s.io/code-generator
