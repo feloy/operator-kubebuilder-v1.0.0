@@ -360,3 +360,17 @@ $ ./src/k8s.io/code-generator/generate-groups.sh \
     github.com/feloy/operator/pkg/apis \
     cluster:v1
 ```
+
+Add a missing declaration of `AddToScheme` to the `pkg/apis/cluster/v1/register.go` file:
+```
+diff --git a/pkg/apis/cluster/v1/register.go b/pkg/apis/cluster/v1/register.go
+index bfb6952..9e9086c 100644
+--- a/pkg/apis/cluster/v1/register.go
++++ b/pkg/apis/cluster/v1/register.go
+@@ -23,4 +23,5 @@ var (
+
+        // SchemeBuilder is used to add go types to the GroupVersionKind scheme
+        SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}
++       AddToScheme   = SchemeBuilder.AddToScheme
+ )
+```
