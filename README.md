@@ -93,7 +93,6 @@ Deploy CRD:
 ```
 make install
 error: error validating "config/crds/cluster_v1_cdncluster.yaml": error validating data: [ValidationError(CustomResourceDefinition.status): missing required field "conditions" in io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1beta1.CustomResourceDefinitionStatus, ValidationError(CustomResourceDefinition.status): missing required field "storedVersions" in io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1beta1.CustomResourceDefinitionStatus]; if you choose to ignore these errors, turn validation off with --validate=false
-
 ```
 
 Issue #339 (https://github.com/kubernetes-sigs/kubebuilder/issues/339)
@@ -347,3 +346,15 @@ ok  	operator/pkg/apis/cluster/v1
 
 ## Generating the clienset for the CRD
 
+Install code-generator and select the branch for Kubernetes 1.10:
+```
+$ go get k8s.io/code-generator
+$ cd $GOPATH/src/k8s.io/code-generator/
+$ git checkout -b 1.10 origin/release-1.10
+$ cd $GOPATH
+$ ./src/k8s.io/code-generator/generate-groups.sh \
+    client \
+    github.com/feloy/operator \
+    github.com/feloy/operator/pkg/apis \
+    cluster:v1
+```
