@@ -28,6 +28,8 @@ deploy: manifests
 # Generate manifests e.g. CRD, RBAC etc.
 manifests:
 	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go all
+	sed -i 's/  conditions: null/  conditions: []/' config/crds/cluster_v1_cdncluster.yaml
+	echo '  storedVersions: []' >> config/crds/cluster_v1_cdncluster.yaml
 
 # Run go fmt against code
 fmt:
