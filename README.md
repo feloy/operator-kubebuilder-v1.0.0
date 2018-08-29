@@ -346,13 +346,18 @@ ok  	operator/pkg/apis/cluster/v1
 
 ## Generating the clienset for the CRD
 
-Remove the `-zz_generated.*` entry from `.gitignore` so the generated deepcopy file is added to the repository.
+At this time, you can create new CDN clusters with the `kubectl` command. If you want to create new CDN clusters
+from a Go application, you will need a specific clientset for this resource.
 
 Install code-generator and select the branch for Kubernetes 1.10:
 ```
 $ go get k8s.io/code-generator
 $ cd $GOPATH/src/k8s.io/code-generator/
 $ git checkout -b 1.10 origin/release-1.10
+```
+
+Run the code-generator to generate the clientset:
+```
 $ cd $GOPATH
 $ ./src/k8s.io/code-generator/generate-groups.sh \
     client \
@@ -360,6 +365,8 @@ $ ./src/k8s.io/code-generator/generate-groups.sh \
     github.com/feloy/operator/pkg/apis \
     cluster:v1
 ```
+
+Remove the `-zz_generated.*` entry from `.gitignore` so the generated deepcopy file is added to the repository.
 
 Add a missing declaration of `AddToScheme` to the `pkg/apis/cluster/v1/register.go` file:
 ```
@@ -373,4 +380,56 @@ index bfb6952..9e9086c 100644
         SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}
 +       AddToScheme   = SchemeBuilder.AddToScheme
  )
+```
+
+## Using the generated clientset
+
+You can create a new Go project in your gopath with the following `main.go` file:
+```
+package main
+
+import (
+	"os"
+	"path/filepath"
+
+	clientsetCdnclusterv1 "github.com/feloy/operator/clientset/versioned"
+	cdnclusterv1 "github.com/feloy/operator/pkg/apis/cluster/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+func main() {
+	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	config, _ := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	clientset, _ := clientsetCdnclusterv1.NewForConfig(config)
+	created := &cdnclusterv1.CdnCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+		Spec: cdnclusterv1.CdnClusterSpec{
+			Role: "balancer",
+			Sources: []cdnclusterv1.CdnClusterSource{
+				{
+					Name:          "cache-live",
+					PathCondition: "^/live/",
+				},
+				{
+					Name:          "cache-vod",
+					PathCondition: "^/vod/",
+				},
+			},
+		},
+	}
+	clientset.ClusterV1().CdnClusters("default").Create(created)
+}
+```
+
+You will need to use the correct `apimachinery` and `client-go` versions, compatible with the versions used by the kubebuilder tool, with this `Gopkg.toml` file:
+```
+[[override]]
+  name = "k8s.io/apimachinery"
+  version = "kubernetes-1.10.0"
+
+[[override]]
+  name = "k8s.io/client-go"
+  version="kubernetes-1.10.1"
 ```
