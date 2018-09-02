@@ -1,4 +1,4 @@
-## Pre-requisites
+# Pre-requisites
 
 Get kubebuilder stable release:
 
@@ -20,7 +20,7 @@ go get -u github.com/golang/dep/cmd/dep
 
 Add $HOME/projects/go/bin to your PATH
 
-## Create the project
+# Create the project
 
 Initialize the project:
 
@@ -29,6 +29,12 @@ kubebuilder init --domain anevia.com --license none --owner Anevia
 ```
 
 At this point, you get a project template with a `Makefile`, a `Dockerfile` a basic `manager` and some default yaml files.
+
+# API
+
+The role of a Custom Resource Definition is to define a type of object so the user can create instances of this type to declare what he wants.
+
+You will see later that the role of the operator is to read in these objects and to operate on the cluster to do what is described in the objects.
 
 ## Create a custom resource
 
@@ -433,3 +439,18 @@ You will need to use the correct `apimachinery` and `client-go` versions, compat
   name = "k8s.io/client-go"
   version="kubernetes-1.10.1"
 ```
+
+# Operator
+
+The role of the operator is to read in *Custom Resources* what is declared by the user and operate the cluster to do what is described in these custom resources.
+
+# The reconcile function
+
+The kubebuilder created for us a basic operator that creates a Deployment deploying an `nginx` container for each custom resource created.
+
+The main part that you have to change is the `Reconcile` function defined in the `pkg/apis/cdncluster_controller.go` file.
+
+This function is called every time a change occurs in the cluster that could interest the operator, and is called with a parameter containing the name and namespace of a custom resource.
+
+The job of this function is to read what is expected by the user in the custom resource *Specs* and to make changes in the cluster to reflect these expectations. Another role of the Reconcile function is to keep up to date the *Status* part of the custom resource.
+
