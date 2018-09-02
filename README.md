@@ -444,7 +444,7 @@ You will need to use the correct `apimachinery` and `client-go` versions, compat
 
 The role of the operator is to read in *Custom Resources* what is declared by the user and operate the cluster to do what is described in these custom resources.
 
-# The reconcile function
+## The Reconcile function
 
 The kubebuilder created for us a basic operator that creates a Deployment deploying an `nginx` container for each custom resource created.
 
@@ -538,3 +538,33 @@ The different steps:
   ```
   - if a difference is found, update the objects deployed in the cluster with the object the operator want to deploy,
   - if an error occurred during updating, try again later.
+
+## Defining on which events to call the Reconcile function
+
+It is your responsability to define on which events the Reconcile function will be called.
+
+For this, you can update the `add` function in the `cdncluster_controller.go` file.
+
+The sample controller already defines that the Reconcile function will be called:
+- every time a `CdnCluster` resource is modified:
+  ```go
+  // Watch for changes to CdnCluster
+  err = c.Watch(&source.Kind{Type: &clusterv1.CdnCluster{}}, &handler.EnqueueRequestForObject{})
+  ```
+- every time a Deployment owned by a `CdnCluster` is modified:
+  ```go
+  // watch for Deployment created by CdnCluster changes
+  err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
+  ```
+
+## Testing the Reconcile function
+
+A framework is provided by kubebuilder to test the Reconcile function.
+
+The framework is based on the `controller-runtime` `envtest` (https://github.com/kubernetes-sigs/controller-runtime/tree/master/pkg/envtest).
+
+The `TestMain` function defined in `cdncluster_controller_suite_test.go` file will be the only function called when running the `go test` command.
+
+This function will first start a Kubernetes test environment and install our CRD on it,
+then run all the tests before to stop the test environment.
+
