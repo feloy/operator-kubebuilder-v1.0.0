@@ -142,7 +142,7 @@ The specs part is editable in the `CdnClusterSpec` structure while the status pa
 
 Let's add a `Role` field in the specs, and a `State` field in the status:
 
-```
+```go
 // CdnClusterSpec defines the desired state of CdnCluster
 type CdnClusterSpec struct {
     // Role of the CDN cluster, can be 'balancer' or 'cache'
@@ -159,7 +159,7 @@ type CdnClusterStatus struct {
 Note that fields must have json tags.
 
 You can re-generate the yaml files used to deploy the CRD, and examine the differences:
-```
+```diff
 $ make manifests
 $ git diff config/crds/cluster_v1_cdncluster.yaml 
 diff --git a/config/crds/cluster_v1_cdncluster.yaml b/config/crds/cluster_v1_cdncluster.yaml
@@ -192,7 +192,7 @@ You can see that the `role` and `state` properties have been added to the defini
 ## Making a field not required
 
 If you want a field to be not required, you can use the `omitempty` flag in the json tag associated with this field:
-```
+```go
 // CdnClusterStatus defines the observed state of CdnCluster
 type CdnClusterStatus struct {
     State string `json:"state,omitempty"`
@@ -200,7 +200,7 @@ type CdnClusterStatus struct {
 ```
 
 then re-generate the manifests again:
-```
+```diff
 $ make manifests
 $ git diff config/crds/cluster_v1_cdncluster.yaml 
 diff --git a/config/crds/cluster_v1_cdncluster.yaml b/config/crds/cluster_v1_cdncluster.yaml
@@ -225,7 +225,7 @@ The `state` field is not required anymore.
 We want our CDN clusters to redirect requests to *source clusters* depending on some condition on the path of the requested URL. For this, we add a list of `sources` to the definition of a CDN cluster and a source is defined by the name of the source CDN cluster and the path condition to redirect to this cluster.
 
 The list of sources cannot be omitted (but can be an empty array), and a path condition can be omitted, in the case of a default source cluster (the one selected if no other path condition in other sources matches):
-```
+```go
 // CdnClusterSource defines a source cluster of a cluster
 type CdnClusterSource struct {
     // The name of the source cluster
@@ -248,7 +248,7 @@ type CdnClusterSpec struct {
 
 Here we create three instances of CDN clusters. A first instance of balancers, which will have two sources, one cluster of caches for Live requests and another for VOD requests:
 
-```
+```yaml
 apiVersion: cluster.anevia.com/v1
 kind: CdnCluster
 metadata:
@@ -299,12 +299,12 @@ $ make test
 
 In the tests, we create a CDN cluster with this command:
 
-```
+```go
 created := &CdnCluster{ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"}}
 ```
 
 In Go, an omitted field in a struct is equivalent to its zero value, so the command is equivalent to:
-```
+```go
 created := &CdnCluster{
   ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
   Spec: CdnClusterSpec{
@@ -315,7 +315,7 @@ created := &CdnCluster{
 ```
 
 The Kubernetes API does not accept a nil value for the Sources with an array type; you have to define the sources with an empty array, for example:
-```
+```go
 created := &CdnCluster{
   ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
   Spec: CdnClusterSpec{
@@ -325,7 +325,7 @@ created := &CdnCluster{
 }
 ```
 or with a more complete specification:
-```
+```go
 created := &CdnCluster{
     ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
     Spec: CdnClusterSpec{
@@ -375,7 +375,7 @@ $ ./src/k8s.io/code-generator/generate-groups.sh \
 Remove the `-zz_generated.*` entry from `.gitignore` so the generated deepcopy file is added to the repository.
 
 Add a missing declaration of `AddToScheme` to the `pkg/apis/cluster/v1/register.go` file:
-```
+```diff
 diff --git a/pkg/apis/cluster/v1/register.go b/pkg/apis/cluster/v1/register.go
 index bfb6952..9e9086c 100644
 --- a/pkg/apis/cluster/v1/register.go
@@ -391,7 +391,7 @@ index bfb6952..9e9086c 100644
 ## Using the generated clientset
 
 You can create a new Go project in your gopath with the following `main.go` file:
-```
+```go
 package main
 
 import (
@@ -430,7 +430,7 @@ func main() {
 ```
 
 You will need to use the correct `apimachinery` and `client-go` versions, compatible with the versions used by the kubebuilder tool, with this `Gopkg.toml` file:
-```
+```toml
 [[override]]
   name = "k8s.io/apimachinery"
   version = "kubernetes-1.10.0"
@@ -450,7 +450,91 @@ The kubebuilder created for us a basic operator that creates a Deployment deploy
 
 The main part that you have to change is the `Reconcile` function defined in the `pkg/apis/cdncluster_controller.go` file.
 
-This function is called every time a change occurs in the cluster that could interest the operator, and is called with a parameter containing the name and namespace of a custom resource.
+The Reconcile function is called every time a change occurs in the cluster that could interest the operator, and is called with a parameter containing the name and namespace of a custom resource.
 
-The job of this function is to read what is expected by the user in the custom resource *Specs* and to make changes in the cluster to reflect these expectations. Another role of the Reconcile function is to keep up to date the *Status* part of the custom resource.
+The job of the Reconcile function is to read what is expected by the user in the custom resource *Specs* and to make changes in the cluster to reflect these expectations. Another role of the Reconcile function is to keep up to date the *Status* part of the custom resource.
 
+The different steps:
+- get the `CdnCluster` custom resource the reconcile function is called for:
+  ```go
+  // Fetch the CdnCluster instance
+  instance := &clusterv1.CdnCluster{}
+  err := r.Get(context.TODO(), request.NamespacedName, instance)
+  if err != nil {
+    if errors.IsNotFound(err) {
+      // Object not found, return.  Created objects are automatically garbage collected.
+      // For additional cleanup logic use finalizers.
+      return reconcile.Result{}, nil
+    }
+    // Error reading the object - requeue the request.
+    return reconcile.Result{}, err
+  }
+  ```
+  - if the CdnCluster resource is not present anymore, ignore the call to the Reconcile function: there is nothing special to do when a resource is deleted, because the garbage collector will handle the deletion
+  - if an error occurred, try again later.
+- create in memory the objects the operator would like to deploy, here a Deployment:
+  ```go
+  // TODO(user): Change this to be the object type created by your controller
+  // Define the desired Deployment object
+  deploy := &appsv1.Deployment{
+    ObjectMeta: metav1.ObjectMeta{
+      Name:      instance.Name + "-deployment",
+      Namespace: instance.Namespace,
+    },
+    Spec: appsv1.DeploymentSpec{
+      Selector: &metav1.LabelSelector{
+        MatchLabels: map[string]string{"deployment": instance.Name + "-deployment"},
+      },
+      Template: corev1.PodTemplateSpec{
+        ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"deployment": instance.Name + "-deployment"}},
+        Spec: corev1.PodSpec{
+          Containers: []corev1.Container{
+            {
+              Name:  "nginx",
+              Image: "nginx",
+            },
+          },
+        },
+      },
+    },
+  }
+- define the owner of the created objects (here, the Deployment) to the CdnCluster resource, so the garbage collector can handle the deletion of these objects when the CdnCluster is deleted:
+
+  ```go
+  if err := controllerutil.SetControllerReference(instance, deploy, r.scheme); err != nil {
+    return reconcile.Result{}, err
+  }
+  ```
+- try to find the objects (here, the deployment) in the Kubernetes cluster, by namespace and name:
+  ```go
+  // TODO(user): Change this for the object type created by your controller
+  // Check if the Deployment already exists
+  found := &appsv1.Deployment{}
+  err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
+  if err != nil && errors.IsNotFound(err) {
+    log.Printf("Creating Deployment %s/%s\n", deploy.Namespace, deploy.Name)
+    err = r.Create(context.TODO(), deploy)
+    if err != nil {
+      return reconcile.Result{}, err
+    }
+  } else if err != nil {
+    return reconcile.Result{}, err
+  }
+  ```
+  - if the objects are not found in the cluster, create them,
+  - if an error occurred during finding or creating the objects, try again later.
+- compare the specs of the objects found in the cluster with the specs of the objects the operator would like to deploy:
+  ```go
+  // TODO(user): Change this for the object type created by your controller
+  // Update the found object and write the result back if there are any changes
+  if !reflect.DeepEqual(deploy.Spec, found.Spec) {
+    found.Spec = deploy.Spec
+    log.Printf("Updating Deployment %s/%s\n", deploy.Namespace, deploy.Name)
+    err = r.Update(context.TODO(), found)
+    if err != nil {
+      return reconcile.Result{}, err
+    }
+  }
+  ```
+  - if a difference is found, update the objects deployed in the cluster with the object the operator want to deploy,
+  - if an error occurred during updating, try again later.
