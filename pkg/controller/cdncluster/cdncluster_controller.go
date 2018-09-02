@@ -138,16 +138,16 @@ func (r *ReconcileCdnCluster) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	}
-
-	// TODO(user): Change this for the object type created by your controller
-	// Update the found object and write the result back if there are any changes
-	if !reflect.DeepEqual(deploy.Spec, found.Spec) {
-		found.Spec = deploy.Spec
-		log.Printf("Updating Deployment %s/%s\n", deploy.Namespace, deploy.Name)
-		err = r.Update(context.TODO(), found)
-		if err != nil {
-			return reconcile.Result{}, err
+	} else {
+		// TODO(user): Change this for the object type created by your controller
+		// Update the found object and write the result back if there are any changes
+		if !reflect.DeepEqual(deploy.Spec, found.Spec) {
+			found.Spec = deploy.Spec
+			log.Printf("Updating Deployment %s/%s\n", deploy.Namespace, deploy.Name)
+			err = r.Update(context.TODO(), found)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 	}
 	return reconcile.Result{}, nil

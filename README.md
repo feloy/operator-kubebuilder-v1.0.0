@@ -551,20 +551,100 @@ The sample controller already defines that the Reconcile function will be called
   // Watch for changes to CdnCluster
   err = c.Watch(&source.Kind{Type: &clusterv1.CdnCluster{}}, &handler.EnqueueRequestForObject{})
   ```
+  In this case, the namespace and name passed as argument to the Reconcile function will be those of the `CdnCluster` itself.
 - every time a Deployment owned by a `CdnCluster` is modified:
   ```go
   // watch for Deployment created by CdnCluster changes
   err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
+    IsController: true,
+    OwnerType:    &clusterv1.CdnCluster{},
+  })
   ```
+  In this case, the namespace and name passed as argument to the Reconcile function will be those of the CdnCluster owning the Deployment.
 
 ## Testing the Reconcile function
 
 A framework is provided by kubebuilder to test the Reconcile function.
 
-The framework is based on the `controller-runtime` `envtest` (https://github.com/kubernetes-sigs/controller-runtime/tree/master/pkg/envtest).
+The framework is based on the `controller-runtime` `envtest` framework: https://github.com/kubernetes-sigs/controller-runtime/tree/master/pkg/envtest.
 
 The `TestMain` function defined in `cdncluster_controller_suite_test.go` file will be the only function called when running the `go test` command.
 
 This function will first start a Kubernetes test environment and install our CRD on it,
 then run all the tests before to stop the test environment.
 
+Each test has to prepare the environment with the following code:
+```go
+func TestReconcile(t *testing.T) {
+  g := gomega.NewGomegaWithT(t)
+
+  // Setup the Manager and Controller.
+  // Wrap the Controller Reconcile function
+  // so it writes each request to a channel when it is finished.
+  mgr, err := manager.New(cfg, manager.Options{})
+  g.Expect(err).NotTo(gomega.HaveOccurred())
+  c := mgr.GetClient()
+
+  recFn, requests := SetupTestReconcile(newReconciler(mgr))
+  g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
+  defer close(StartTestManager(mgr, g))
+}
+```
+
+It is for example possible to create some object in Kubernetes and test that the Reconcile function is called with the expected parameter:
+
+```go
+instance := &clusterv1.CdnCluster{
+  ObjectMeta: metav1.ObjectMeta{
+    Name: "foo",
+    Namespace: "default",
+  },
+  Spec: clusterv1.CdnClusterSpec{
+    Sources: []clusterv1.CdnClusterSource{},
+  },
+}
+
+// Create the CdnCluster object
+// and expect the Reconcile to be called
+// with the instance namespace and name as parameter
+err = c.Create(context.TODO(), instance)
+g.Expect(err).NotTo(gomega.HaveOccurred())
+defer c.Delete(context.TODO(), instance)
+
+var expectedRequest = reconcile.Request{
+  NamespacedName: types.NamespacedName{
+    Name: "foo",
+    Namespace: "default",
+  },
+}
+const timeout = time.Second * 5
+
+g.Eventually(requests, timeout)
+ .Should(gomega.Receive(gomega.Equal(expectedRequest)))
+```
+
+It is also possible to test that, when a `CdnCluster` is created, that a
+Deployment is created with the expected name:
+```go
+// Expect that a Deployment is created
+deploy := &appsv1.Deployment{}
+var depKey = types.NamespacedName{
+  Name:      "foo-deployment",
+  Namespace: "default",
+}
+g.Eventually(func() error {
+  return c.Get(context.TODO(), depKey, deploy)
+}, timeout).Should(gomega.Succeed())
+```
+
+Let's now test that, when a Deployment created by a CdnCluster is deleted, the Reconcile function is called and the Deployment is created again:
+```go
+  // Delete the Deployment and expect 
+  // Reconcile to be called for Deployment deletion
+  // and Deployment to be created again
+  g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
+  g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
+  g.Eventually(func() error {
+    return c.Get(context.TODO(), depKey, deploy)
+  }, timeout).Should(gomega.Succeed())
+```
