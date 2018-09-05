@@ -25,6 +25,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
+type ParentsList map[string][]string
+
+var (
+	// The parent CDN clusters for a CDN cluster
+	Parents = ParentsList{}
+)
+
+func (o ParentsList) Add(source, parent string) {
+	for _, p := range o[source] {
+		if p == parent {
+			return
+		}
+	}
+	o[source] = append(o[source], parent)
+}
+
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
@@ -56,11 +72,32 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create
-	// Uncomment watch a Deployment created by CdnCluster - change this for objects you create
+	// Watch a Deployment created by CdnCluster
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &clusterv1.CdnCluster{},
+	})
+	if err != nil {
+		return err
+	}
+
+	err = c.Watch(&source.Kind{Type: &clusterv1.CdnCluster{}}, &handler.EnqueueRequestsFromMapFunc{
+		ToRequests: handler.ToRequestsFunc(func(mapObject handler.MapObject) []reconcile.Request {
+			v, ok := mapObject.Object.(*clusterv1.CdnCluster)
+			if ok {
+				var res = []reconcile.Request{}
+				for _, parent := range Parents[v.Name] {
+					res = append(res, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      parent,
+							Namespace: v.Namespace,
+						},
+					})
+				}
+				return res
+			}
+			return nil
+		}),
 	})
 	if err != nil {
 		return err
@@ -96,6 +133,25 @@ func (r *ReconcileCdnCluster) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	for _, source := range instance.Spec.Sources {
+		Parents.Add(source.Name, instance.Name)
+	}
+
+	// Verify that all sources exist
+	// We do not continue until all sources exist
+	for _, source := range instance.Spec.Sources {
+		sourceInstance := &clusterv1.CdnCluster{}
+		err := r.Get(context.TODO(), types.NamespacedName{Name: source.Name, Namespace: instance.Namespace}, sourceInstance)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// Source not found, return.
+				return reconcile.Result{}, nil
+			}
+			// Error reading the object - requeue the request.
+			return reconcile.Result{}, err
+		}
 	}
 
 	// TODO(user): Change this to be the object type created by your controller

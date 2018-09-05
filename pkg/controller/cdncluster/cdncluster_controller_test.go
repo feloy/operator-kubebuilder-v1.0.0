@@ -18,13 +18,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-/*
 func TestReconcile(t *testing.T) {
 
 	var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"}}
 	var depKey = types.NamespacedName{Name: "foo-deployment", Namespace: "default"}
 
-	const timeout = time.Second * 5
+	const timeout = time.Second * 10
 
 	g := gomega.NewGomegaWithT(t)
 
@@ -68,7 +67,6 @@ func TestReconcile(t *testing.T) {
 	g.Expect(c.Delete(context.TODO(), deploy)).To(gomega.Succeed())
 
 }
-*/
 
 func TestReconcile2(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
@@ -126,6 +124,112 @@ func TestReconcile2(t *testing.T) {
 	// and Deployment to be created again
 	g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
+	g.Eventually(func() error {
+		return c.Get(context.TODO(), depKey, deploy)
+	}, timeout).Should(gomega.Succeed())
+}
+
+func TestReconcileCreatedAfterSource(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+
+	// Setup the Manager and Controller.
+	// Wrap the Controller Reconcile function
+	// so it writes each request to a channel when it is finished.
+	mgr, err := manager.New(cfg, manager.Options{})
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	c := mgr.GetClient()
+
+	recFn, requests := SetupTestReconcile(newReconciler(mgr))
+	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
+	defer close(StartTestManager(mgr, g))
+
+	// Create the CdnCluster object
+	// and expect the Reconcile to be called
+	// with the instance namespace and name as parameter
+	instanceParent := &clusterv1.CdnCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "foo3",
+			Namespace: "default",
+		},
+		Spec: clusterv1.CdnClusterSpec{
+			Sources: []clusterv1.CdnClusterSource{
+				{
+					Name:          "asource",
+					PathCondition: "/live/",
+				},
+			},
+		},
+	}
+
+	err = c.Create(context.TODO(), instanceParent)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	defer c.Delete(context.TODO(), instanceParent)
+
+	var expectedRequest = reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "foo3",
+			Namespace: "default",
+		},
+	}
+	const timeout = time.Second * 5
+
+	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
+
+	// Expect that a Deployment is not created
+	deploy := &appsv1.Deployment{}
+	var depKey = types.NamespacedName{
+		Name:      "foo3-deployment",
+		Namespace: "default",
+	}
+	g.Eventually(func() error {
+		return c.Get(context.TODO(), depKey, deploy)
+	}, timeout).ShouldNot(gomega.Succeed())
+
+	// Create the CdnCluster object
+	// and expect the Reconcile to be called
+	// with the instance namespace and name as parameter
+	instanceSource := &clusterv1.CdnCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "asource",
+			Namespace: "default",
+		},
+		Spec: clusterv1.CdnClusterSpec{
+			Sources: []clusterv1.CdnClusterSource{},
+		},
+	}
+
+	err = c.Create(context.TODO(), instanceSource)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	defer c.Delete(context.TODO(), instanceSource)
+
+	var expectedRequestSource = reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "asource",
+			Namespace: "default",
+		},
+	}
+
+	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequestSource)))
+
+	// Expect that a Deployment is created
+	deploy = &appsv1.Deployment{}
+	depKey = types.NamespacedName{
+		Name:      "asource-deployment",
+		Namespace: "default",
+	}
+	g.Eventually(func() error {
+		return c.Get(context.TODO(), depKey, deploy)
+	}, timeout).Should(gomega.Succeed())
+
+	// Expect the Reconcile function to be called for the parent cluster
+	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
+
+	// Expect that a Deployment is created
+	deploy = &appsv1.Deployment{}
+	depKey = types.NamespacedName{
+		Name:      "foo3-deployment",
+		Namespace: "default",
+	}
 	g.Eventually(func() error {
 		return c.Get(context.TODO(), depKey, deploy)
 	}, timeout).Should(gomega.Succeed())
