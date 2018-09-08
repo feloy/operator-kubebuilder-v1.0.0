@@ -9,6 +9,8 @@ import (
 	"log"
 	"reflect"
 
+	"k8s.io/client-go/tools/record"
+
 	clusterv1 "github.com/feloy/operator/pkg/apis/cluster/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,7 +57,11 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileCdnCluster{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileCdnCluster{
+		Client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		recorder: mgr.GetRecorder("CdnCluster"),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -111,7 +117,8 @@ var _ reconcile.Reconciler = &ReconcileCdnCluster{}
 // ReconcileCdnCluster reconciles a CdnCluster object
 type ReconcileCdnCluster struct {
 	client.Client
-	scheme *runtime.Scheme
+	scheme   *runtime.Scheme
+	recorder record.EventRecorder
 }
 
 // Reconcile reads that state of the cluster for a CdnCluster object and makes changes based on the state read
@@ -146,7 +153,8 @@ func (r *ReconcileCdnCluster) Reconcile(request reconcile.Request) (reconcile.Re
 		err := r.Get(context.TODO(), types.NamespacedName{Name: source.Name, Namespace: instance.Namespace}, sourceInstance)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				// Source not found, return.
+				// Source not found, inform with an event and return.
+				r.recorder.Eventf(instance, "Normal", "SourceNotFound", "Source %s not found, will retry later", source.Name)
 				return reconcile.Result{}, nil
 			}
 			// Error reading the object - requeue the request.
@@ -192,6 +200,7 @@ func (r *ReconcileCdnCluster) Reconcile(request reconcile.Request) (reconcile.Re
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		r.recorder.Eventf(instance, "Normal", "DeploymentCreated", "The Deployment %s has been created", deploy.Name)
 	} else if err != nil {
 		return reconcile.Result{}, err
 	} else {

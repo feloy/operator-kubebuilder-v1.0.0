@@ -829,3 +829,124 @@ func TestReconcileCreatedAfterSource(t *testing.T) {
   }, timeout).Should(gomega.Succeed())
 }
 ```
+
+## Sending Events
+
+The Operator can send events and attach them to CdnCluster instances.
+
+First, add a `record.EventRecorder` field in the `ReconcileCdnCluster` struct, that will reference the recorder
+the operator will use to send events:
+```go
+// ReconcileCdnCluster reconciles a CdnCluster object
+type ReconcileCdnCluster struct {
+  client.Client
+  scheme   *runtime.Scheme
+  recorder record.EventRecorder
+}
+```
+Second, get the recorder from the `Manager`:
+```go
+// newReconciler returns a new reconcile.Reconciler
+func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+  return &ReconcileCdnCluster{
+    Client:   mgr.GetClient(),
+    scheme:   mgr.GetScheme(),
+    recorder: mgr.GetRecorder("CdnCluster"),
+  }
+}
+```
+Finally, use `Event` or `Eventf` methods on this recorder to send events; one when the Reconcile function returns because sources are not ready:
+```go
+if errors.IsNotFound(err) {
+  // Source not found, inform with an event and return.
+  r.recorder.Eventf(instance, "Normal", "SourceNotFound", "Source %s not found, will retry later", source.Name)
+  return reconcile.Result{}, nil
+}
+```
+another one when the Reconcile function succeeds to create the deployment:
+```go
+log.Printf("Creating Deployment %s/%s\n", deploy.Namespace, deploy.Name)
+err = r.Create(context.TODO(), deploy)
+if err != nil {
+  return reconcile.Result{}, err
+}
+r.recorder.Eventf(instance, "Normal", "DeploymentCreated", "The Deployment %s has been created", deploy.Name)
+```
+
+## A demo with Events
+
+Start the operator from outside the cluster:
+```
+make run
+```
+Then, on another terminal:
+```
+$ cd config/samples
+
+$ kubectl apply -f balancer.yaml 
+cdncluster.cluster.anevia.com "balancer" created
+
+$ kubectl describe cdncluster
+Name:         balancer
+Namespace:    default
+[...]
+Events:
+  Type    Reason          Age   From        Message
+  ----    ------          ----  ----        -------
+  Normal  SourceNotFound  3s    CdnCluster  Source cache-live not found, will retry later
+
+
+
+$ kubectl apply -f cache-live.yaml 
+cdncluster.cluster.anevia.com "cache-live" created
+
+$ kubectl describe cdncluster
+Name:         balancer
+Namespace:    default
+[...]
+Events:
+  Type    Reason          Age   From        Message
+  ----    ------          ----  ----        -------
+  Normal  SourceNotFound  24s   CdnCluster  Source cache-live not found, will retry later
+  Normal  SourceNotFound  3s    CdnCluster  Source cache-vod not found, will retry later
+
+Name:         cache-live
+Namespace:    default
+[...]
+Events:
+  Type    Reason             Age   From        Message
+  ----    ------             ----  ----        -------
+  Normal  DeploymentCreated  3s    CdnCluster  The Deployment cache-live-deployment has been created
+
+
+
+$ kubectl describe cdncluster
+Name:         balancer
+Namespace:    default
+[...]
+Events:
+  Type    Reason             Age   From        Message
+  ----    ------             ----  ----        -------
+  Normal  SourceNotFound     34s   CdnCluster  Source cache-live not found, will retry later
+  Normal  SourceNotFound     13s   CdnCluster  Source cache-vod not found, will retry later
+  Normal  DeploymentCreated  2s    CdnCluster  The Deployment balancer-deployment has been created
+
+
+Name:         cache-live
+Namespace:    default
+[...]
+Events:
+  Type    Reason             Age   From        Message
+  ----    ------             ----  ----        -------
+  Normal  DeploymentCreated  13s   CdnCluster  The Deployment cache-live-deployment has been created
+
+
+Name:         cache-vod
+Namespace:    default
+[...]
+Events:
+  Type    Reason             Age   From        Message
+  ----    ------             ----  ----        -------
+  Normal  DeploymentCreated  2s    CdnCluster  The Deployment cache-vod-deployment has been created
+
+```

@@ -105,7 +105,7 @@ func TestReconcile2(t *testing.T) {
 			Namespace: "default",
 		},
 	}
-	const timeout = time.Second * 5
+	const timeout = time.Second * 10
 
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
