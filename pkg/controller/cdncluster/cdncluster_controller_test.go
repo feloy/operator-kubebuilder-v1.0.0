@@ -119,6 +119,13 @@ func TestReconcile2(t *testing.T) {
 		return c.Get(context.TODO(), depKey, deploy)
 	}, timeout).Should(gomega.Succeed())
 
+	// Get CDN cluster and expect the state to be "Deploying"
+	c.Get(context.TODO(), types.NamespacedName{
+		Name:      "foo2",
+		Namespace: "default",
+	}, instance)
+	g.Expect(instance.Status.State).To(gomega.Equal("Deploying"))
+
 	// Delete the Deployment and expect Reconcile
 	// to be called for Deployment deletion
 	// and Deployment to be created again
@@ -174,6 +181,13 @@ func TestReconcileCreatedAfterSource(t *testing.T) {
 	const timeout = time.Second * 5
 
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
+
+	// Get CDN cluster from cluster and expect the state to be "WaitingSource"
+	c.Get(context.TODO(), types.NamespacedName{
+		Name:      "foo3",
+		Namespace: "default",
+	}, instanceParent)
+	g.Expect(instanceParent.Status.State).To(gomega.Equal("WaitingSource"))
 
 	// Expect that a Deployment is not created
 	deploy := &appsv1.Deployment{}

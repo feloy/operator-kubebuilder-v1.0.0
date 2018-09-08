@@ -983,5 +983,43 @@ err = r.setState(instance, "WaitingSource")
 if err != nil {
   return reconcile.Result{}, err
 }
+```
 
+## Testing that the State is set
+
+In the test, after the Deployment has been created, we can test that the state has been set:
+```go
+// Expect that a Deployment is created
+deploy := &appsv1.Deployment{}
+var depKey = types.NamespacedName{
+  Name:      "foo2-deployment",
+  Namespace: "default",
+}
+g.Eventually(func() error {
+  return c.Get(context.TODO(), depKey, deploy)
+}, timeout).Should(gomega.Succeed())
+
+// Get CDN cluster and expect the state to be "Deploying"
+c.Get(context.TODO(), types.NamespacedName{
+  Name:      "foo2",
+  Namespace: "default",
+}, instance)
+g.Expect(instance.Status.State).To(gomega.Equal("Deploying"))
+```
+
+and when waiting for sources, that the state is correct:
+```go
+// Get CDN cluster from cluster and expect the state to be "WaitingSource"
+c.Get(context.TODO(), types.NamespacedName{
+  Name:      "foo3",
+  Namespace: "default",
+}, instanceParent)
+g.Expect(instanceParent.Status.State).To(gomega.Equal("WaitingSource"))
+
+// Expect that a Deployment is not created
+deploy := &appsv1.Deployment{}
+var depKey = types.NamespacedName{
+  Name:      "foo3-deployment",
+  Namespace: "default",
+}
 ```
