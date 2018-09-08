@@ -950,3 +950,38 @@ Events:
   Normal  DeploymentCreated  2s    CdnCluster  The Deployment cache-vod-deployment has been created
 
 ```
+
+## Setting State of CDN clusters
+
+We previoulsy added a `State` field in the `CdnClusterStatus` structure, in the `pkg/apis/cluster/v1/cdncluster_types.go` file:
+
+```go
+// CdnClusterStatus defines the observed state of CdnCluster
+type CdnClusterStatus struct {
+  // State of the CDN cluster
+  State string `json:"state,omitempty"`
+}
+```
+
+We can create a method to set the state of a CDN cluster:
+```go
+// setState changes the State of CDN cluster, if necessary
+func (r *ReconcileCdnCluster) setState(cdncluster *clusterv1.CdnCluster, newState string) error {
+  if cdncluster.Status.State != newState {
+    cdncluster.Status.State = newState
+    return r.Update(context.TODO(), cdncluster)
+  }
+  return nil
+}
+```
+
+and use this method in the Reconcile function, for rxample to set the state as `WaitingSource`:
+```go
+// Source not found, inform with an event and return.
+r.recorder.Eventf(instance, "Normal", "SourceNotFound", "Source %s not found, will retry later", source.Name)
+err = r.setState(instance, "WaitingSource")
+if err != nil {
+  return reconcile.Result{}, err
+}
+
+```

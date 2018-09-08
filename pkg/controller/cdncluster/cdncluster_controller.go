@@ -155,6 +155,10 @@ func (r *ReconcileCdnCluster) Reconcile(request reconcile.Request) (reconcile.Re
 			if errors.IsNotFound(err) {
 				// Source not found, inform with an event and return.
 				r.recorder.Eventf(instance, "Normal", "SourceNotFound", "Source %s not found, will retry later", source.Name)
+				err = r.setState(instance, "WaitingSource")
+				if err != nil {
+					return reconcile.Result{}, err
+				}
 				return reconcile.Result{}, nil
 			}
 			// Error reading the object - requeue the request.
@@ -201,6 +205,10 @@ func (r *ReconcileCdnCluster) Reconcile(request reconcile.Request) (reconcile.Re
 			return reconcile.Result{}, err
 		}
 		r.recorder.Eventf(instance, "Normal", "DeploymentCreated", "The Deployment %s has been created", deploy.Name)
+		err = r.setState(instance, "Deploying")
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	} else if err != nil {
 		return reconcile.Result{}, err
 	} else {
@@ -216,4 +224,13 @@ func (r *ReconcileCdnCluster) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 	}
 	return reconcile.Result{}, nil
+}
+
+// setState changes the State of CDN cluster, if necessary
+func (r *ReconcileCdnCluster) setState(cdncluster *clusterv1.CdnCluster, newState string) error {
+	if cdncluster.Status.State != newState {
+		cdncluster.Status.State = newState
+		return r.Update(context.TODO(), cdncluster)
+	}
+	return nil
 }
