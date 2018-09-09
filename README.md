@@ -1023,3 +1023,43 @@ var depKey = types.NamespacedName{
   Namespace: "default",
 }
 ```
+
+## Testing that an event is sent
+
+We previously declared the reconciler recorder in the newReconciler function, with mgr.GetRecorder("CdnCluster").
+
+To be able to fake the recorder, we can instead pass a recorder as argument to the newReconciler method. This way, we will be able to pass the mgr.GetRecorder("CdnCluster") one during real execution, and a fake recorder during tests:
+
+```diff
+func Add(mgr manager.Manager) error {
+- return add(mgr, newReconciler(mgr))
++ return add(mgr, newReconciler(mgr, mgr.GetRecorder("CdnCluster")))
+ }
+
+-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
++func newReconciler(mgr manager.Manager, recorder record.EventRecorder) reconcile.Reconciler {
+  return &ReconcileCdnCluster{
+    Client:   mgr.GetClient(),
+    scheme:   mgr.GetScheme(),
+-   recorder: mgr.GetRecorder("CdnCluster"),
++   recorder: recorder,
+  }
+}
+ ```
+
+ and in the tests:
+ ```diff
+- recFn, requests := SetupTestReconcile(newReconciler(mgr))
++ eventRecorder := record.NewFakeRecorder(1024)
++ recFn, requests := SetupTestReconcile(newReconciler(mgr, eventRecorder))
+ ```
+
+ Now, using the `NewFakeRecorder` provider provided by the `record` package, an `Event` channel is accessible in this recorder where the events are stored and from which we can get emitted events:
+
+```go
+var eventReceived string
+select {
+case eventReceived = <-eventRecorder.Events:
+}
+g.Expect(eventReceived).To(gomega.Equal("Normal SourceNotFound Source asource not found, will retry later"))
+```

@@ -14,6 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -43,7 +44,8 @@ func TestReconcile(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	c := mgr.GetClient()
 
-	recFn, requests := SetupTestReconcile(newReconciler(mgr))
+	eventRecorder := record.NewFakeRecorder(1024)
+	recFn, requests := SetupTestReconcile(newReconciler(mgr, eventRecorder))
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
 	defer close(StartTestManager(mgr, g))
 
@@ -78,7 +80,8 @@ func TestReconcile2(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	c := mgr.GetClient()
 
-	recFn, requests := SetupTestReconcile(newReconciler(mgr))
+	eventRecorder := record.NewFakeRecorder(1024)
+	recFn, requests := SetupTestReconcile(newReconciler(mgr, eventRecorder))
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
 	defer close(StartTestManager(mgr, g))
 
@@ -126,6 +129,12 @@ func TestReconcile2(t *testing.T) {
 	}, instance)
 	g.Expect(instance.Status.State).To(gomega.Equal("Deploying"))
 
+	var eventReceived string
+	select {
+	case eventReceived = <-eventRecorder.Events:
+	}
+	g.Expect(eventReceived).To(gomega.Equal("Normal DeploymentCreated The Deployment foo2-deployment has been created"))
+
 	// Delete the Deployment and expect Reconcile
 	// to be called for Deployment deletion
 	// and Deployment to be created again
@@ -146,7 +155,8 @@ func TestReconcileCreatedAfterSource(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	c := mgr.GetClient()
 
-	recFn, requests := SetupTestReconcile(newReconciler(mgr))
+	eventRecorder := record.NewFakeRecorder(1024)
+	recFn, requests := SetupTestReconcile(newReconciler(mgr, eventRecorder))
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
 	defer close(StartTestManager(mgr, g))
 
@@ -188,6 +198,12 @@ func TestReconcileCreatedAfterSource(t *testing.T) {
 		Namespace: "default",
 	}, instanceParent)
 	g.Expect(instanceParent.Status.State).To(gomega.Equal("WaitingSource"))
+
+	var eventReceived string
+	select {
+	case eventReceived = <-eventRecorder.Events:
+	}
+	g.Expect(eventReceived).To(gomega.Equal("Normal SourceNotFound Source asource not found, will retry later"))
 
 	// Expect that a Deployment is not created
 	deploy := &appsv1.Deployment{}

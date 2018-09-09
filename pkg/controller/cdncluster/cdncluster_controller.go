@@ -52,15 +52,15 @@ func (o ParentsList) Add(source, parent string) {
 // and Start it when the Manager is Started.
 // USER ACTION REQUIRED: update cmd/manager/main.go to call this cluster.Add(mgr) to install this Controller
 func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+	return add(mgr, newReconciler(mgr, mgr.GetRecorder("CdnCluster")))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, recorder record.EventRecorder) reconcile.Reconciler {
 	return &ReconcileCdnCluster{
 		Client:   mgr.GetClient(),
 		scheme:   mgr.GetScheme(),
-		recorder: mgr.GetRecorder("CdnCluster"),
+		recorder: recorder,
 	}
 }
 
